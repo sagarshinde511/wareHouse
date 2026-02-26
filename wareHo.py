@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import mysql.connector
-import plotly.express as px
-import time
+import plotly.graph_objects as go
+from streamlit_autorefresh import st_autorefresh
 
 # -------------------- CONFIG --------------------
 DB_CONFIG = {
@@ -15,15 +15,15 @@ DB_CONFIG = {
 USERNAME = "admin"
 PASSWORD = "admin"
 
-REFRESH_INTERVAL = 10  # seconds
+# -------------------- AUTO REFRESH (10 sec) --------------------
+st_autorefresh(interval=10000, key="refresh")
 
-# -------------------- LOGIN --------------------
+# -------------------- LOGIN SYSTEM --------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 def login():
-    st.title("Warehouse Monitoring Login")
-
+    st.title("🍇 Warehouse Monitoring Login")
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
 
@@ -47,47 +47,73 @@ def fetch_data():
     conn.close()
     return df
 
-# -------------------- MAIN DASHBOARD --------------------
+# -------------------- DASHBOARD --------------------
 st.title("🍇 Grapes Warehouse Monitoring Dashboard")
 
-placeholder = st.empty()
+df = fetch_data()
 
-while True:
-    with placeholder.container():
+if df.empty:
+    st.warning("No data available")
+else:
+    df["DateTime"] = pd.to_datetime(df["DateTime"])
+    df_sorted = df.sort_values("DateTime")
 
-        df = fetch_data()
+    # -------- Latest Data --------
+    st.subheader("Latest Readings")
+    st.dataframe(df.head(10), use_container_width=True)
 
-        if df.empty:
-            st.warning("No data available")
-        else:
-            df["DateTime"] = pd.to_datetime(df["DateTime"])
+    # -------- Combined Graph --------
+    fig = go.Figure()
 
-            st.subheader("Latest Readings")
-            st.dataframe(df.head(10), use_container_width=True)
+    fig.add_trace(go.Scatter(
+        x=df_sorted["DateTime"],
+        y=df_sorted["temp"],
+        name="Temperature (°C)",
+        yaxis="y1"
+    ))
 
-            # Temperature Graph
-            fig_temp = px.line(df.sort_values("DateTime"),
-                               x="DateTime",
-                               y="temp",
-                               title="Temperature Trend")
-            st.plotly_chart(fig_temp, use_container_width=True)
+    fig.add_trace(go.Scatter(
+        x=df_sorted["DateTime"],
+        y=df_sorted["humi"],
+        name="Humidity (%)",
+        yaxis="y2"
+    ))
 
-            # Humidity Graph
-            fig_humi = px.line(df.sort_values("DateTime"),
-                               x="DateTime",
-                               y="humi",
-                               title="Humidity Trend")
-            st.plotly_chart(fig_humi, use_container_width=True)
+    fig.add_trace(go.Scatter(
+        x=df_sorted["DateTime"],
+        y=df_sorted["gas"],
+        name="CO Gas",
+        yaxis="y3"
+    ))
 
-            # Gas Graph
-            fig_gas = px.line(df.sort_values("DateTime"),
-                              x="DateTime",
-                              y="gas",
-                              title="CO Gas Trend")
-            st.plotly_chart(fig_gas, use_container_width=True)
+    fig.update_layout(
+        title="Warehouse Environmental Monitoring",
+        xaxis=dict(title="DateTime"),
 
-            # Download CSV
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("Download CSV", csv, "warehouse_data.csv", "text/csv")
+        yaxis=dict(
+            title="Temperature (°C)",
+            side="left"
+        ),
 
-    time.sleep(REFRESH_INTERVAL)
+        yaxis2=dict(
+            title="Humidity (%)",
+            overlaying="y",
+            side="right"
+        ),
+
+        yaxis3=dict(
+            title="CO Gas",
+            overlaying="y",
+            side="right",
+            position=0.95
+        ),
+
+        legend=dict(x=0.01, y=0.99),
+        height=600
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # -------- CSV Download --------
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Full Data CSV", csv, "warehouse_data.csv", "text/csv")
