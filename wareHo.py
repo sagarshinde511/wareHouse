@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import mysql.connector
 import plotly.graph_objects as go
-from streamlit_autorefresh import st_autorefresh
+import time
 
 # -------------------- CONFIG --------------------
 DB_CONFIG = {
@@ -14,9 +14,6 @@ DB_CONFIG = {
 
 USERNAME = "admin"
 PASSWORD = "admin"
-
-# -------------------- AUTO REFRESH (10 sec) --------------------
-st_autorefresh(interval=10000, key="refresh")
 
 # -------------------- LOGIN SYSTEM --------------------
 if "logged_in" not in st.session_state:
@@ -39,6 +36,14 @@ if not st.session_state.logged_in:
     login()
     st.stop()
 
+# -------------------- AUTO REFRESH (10 sec) --------------------
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+if time.time() - st.session_state.last_refresh > 10:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
+
 # -------------------- DATABASE FUNCTION --------------------
 def fetch_data():
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -58,62 +63,38 @@ else:
     df["DateTime"] = pd.to_datetime(df["DateTime"])
     df_sorted = df.sort_values("DateTime")
 
-    # -------- Latest Data --------
     st.subheader("Latest Readings")
     st.dataframe(df.head(10), use_container_width=True)
 
-    # -------- Combined Graph --------
+    # Combined Graph
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
         x=df_sorted["DateTime"],
         y=df_sorted["temp"],
-        name="Temperature (°C)",
-        yaxis="y1"
+        name="Temperature (°C)"
     ))
 
     fig.add_trace(go.Scatter(
         x=df_sorted["DateTime"],
         y=df_sorted["humi"],
-        name="Humidity (%)",
-        yaxis="y2"
+        name="Humidity (%)"
     ))
 
     fig.add_trace(go.Scatter(
         x=df_sorted["DateTime"],
         y=df_sorted["gas"],
-        name="CO Gas",
-        yaxis="y3"
+        name="CO Gas"
     ))
 
     fig.update_layout(
         title="Warehouse Environmental Monitoring",
-        xaxis=dict(title="DateTime"),
-
-        yaxis=dict(
-            title="Temperature (°C)",
-            side="left"
-        ),
-
-        yaxis2=dict(
-            title="Humidity (%)",
-            overlaying="y",
-            side="right"
-        ),
-
-        yaxis3=dict(
-            title="CO Gas",
-            overlaying="y",
-            side="right",
-            position=0.95
-        ),
-
-        legend=dict(x=0.01, y=0.99),
+        xaxis_title="DateTime",
+        yaxis_title="Sensor Values",
         height=600
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # -------- CSV Download --------
     csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("Download Full Data CSV", csv, "warehouse_data.csv", "text/csv")
+    st.download_button("Download CSV", csv, "warehouse_data.csv", "text/csv")
